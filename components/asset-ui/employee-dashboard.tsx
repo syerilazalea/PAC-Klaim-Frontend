@@ -98,7 +98,7 @@ export default function EmployeeDashboard() {
       </div>
 
       {/* Action Button */}
-      <div className="flex justify-center">
+      {/* <div className="flex justify-center">
         <Button 
           onClick={handleNewClaim}
           className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
@@ -106,10 +106,10 @@ export default function EmployeeDashboard() {
           <Plus className="w-5 h-5 mr-2" />
           Buat Klaim Baru
         </Button>
-      </div>
+      </div> */}
 
       {/* Recent Claims */}
-      <div className="space-y-6">
+      {/* <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
             Klaim Terbaru
@@ -128,7 +128,7 @@ export default function EmployeeDashboard() {
             />
           ))}
         </div>
-      </div>
+      </div> */}
 
       {/* Claim Submission Form */}
       {showSubmissionForm && (

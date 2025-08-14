@@ -1,243 +1,212 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Eye, FileCheck, Calendar, DollarSign, User, Clock } from 'lucide-react'
-import { getClaimsForHR } from "@/lib/data"
-import ClaimDetailModal from "./claim-detail-modal"
-import ReviewForm from "./review-form"
-import type { Claim } from "@/lib/data"
+import { useState, useEffect } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Eye, FileCheck, Calendar, Clock } from "lucide-react";
+import type { Claim } from "@/lib/data";
+import ReviewModal from "./review-modal";
 
-const getCategoryColor = (category: string) => {
-  switch (category) {
-    case "Medis":
-      return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800"
-    case "Pembelian Barang":
-      return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800"
-    case "Perjalanan Dinas":
-      return "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800"
-    default:
-      return "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-950 dark:text-gray-300 dark:border-gray-800"
-  }
+interface User {
+  id: string;
+  name: string;
+  nik?: string;
 }
 
-const formatCurrency = (amount: string) => {
-  return new Intl.NumberFormat('id-ID').format(parseInt(amount.replace(/\./g, '')))
+interface Status {
+  id: string;
+  name: string;
 }
 
-const getDaysAgo = (dateString: string) => {
-  const submissionDate = new Date(dateString.split(' ').reverse().join('-'))
-  const today = new Date()
-  const diffTime = Math.abs(today.getTime() - submissionDate.getTime())
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  
-  if (diffDays === 1) return "1 hari yang lalu"
-  if (diffDays < 7) return `${diffDays} hari yang lalu`
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)} minggu yang lalu`
-  return `${Math.floor(diffDays / 30)} bulan yang lalu`
+interface ReviewWithDetails {
+  claimId: string;
+  userName: string;
+  statusName: string;
+  description?: string;
+  createdAt: string;
 }
 
 export default function HRReviewsList() {
-  const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null)
-  const [showDetailModal, setShowDetailModal] = useState(false)
-  const [showReviewForm, setShowReviewForm] = useState(false)
-  
-  const pendingClaims = getClaimsForHR() // Claims pending HR review
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [pendingReviews, setPendingReviews] = useState<ReviewWithDetails[]>([]);
+  const [completedReviews, setCompletedReviews] = useState<ReviewWithDetails[]>([]);
+  const [usersMap, setUsersMap] = useState<Record<string, User>>({});
+  const [statusMap, setStatusMap] = useState<Record<string, Status>>({});
+  const [claimsData, setClaimsData] = useState<Claim[]>([]);
+  const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
-  const handleViewDetail = (claim: Claim) => {
-    setSelectedClaim(claim)
-    setShowDetailModal(true)
+
+useEffect(() => {
+    if (typeof window !== "undefined") {
+      const userId = localStorage.getItem("userId");
+      setCurrentUserId(userId);
+    }
+  }, []);
+
+  const getDaysAgo = (dateString: string) => {
+    const submissionDate = new Date(dateString);
+    const today = new Date();
+    const diffTime = Math.abs(today.getTime() - submissionDate.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 1) return "1 hari yang lalu";
+    if (diffDays < 7) return `${diffDays} hari yang lalu`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} minggu yang lalu`;
+    return `${Math.floor(diffDays / 30)} bulan yang lalu`;
+  };
+
+  const fetchClaimsAndUsers = async () => {
+    try {
+      const [resClaims, resUsers, resStatus] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/claims`),
+        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/users`),
+        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/statuses`)
+      ]);
+
+      if (!resClaims.ok || !resUsers.ok || !resStatus.ok) throw new Error("Gagal fetch data");
+
+      const claims: Claim[] = await resClaims.json();
+      setClaimsData(claims);
+
+      const users: User[] = await resUsers.json();
+      const statusList: Status[] = await resStatus.json();
+
+      const usersTemp: Record<string, User> = {};
+      users.forEach(u => (usersTemp[u.id] = u));
+      setUsersMap(usersTemp);
+
+      const statusTemp: Record<string, Status> = {};
+      statusList.forEach(s => (statusTemp[s.id] = s));
+      setStatusMap(statusTemp);
+
+      const pending: ReviewWithDetails[] = [];
+      const completed: ReviewWithDetails[] = [];
+
+      claims.forEach((claim: Claim) => {
+        const reviewItem: ReviewWithDetails = {
+          claimId: claim.id,
+          userName: usersTemp[claim.user_id]?.name ?? "Nama tidak diketahui",
+          statusName: statusTemp[claim.status_id ?? ""]?.name ?? "Pending",
+          description: claim.description,
+          createdAt: claim.created_at
+        };
+
+        if (claim.status_id === "approved") {
+          completed.push(reviewItem);
+        } else {
+          pending.push(reviewItem);
+        }
+      });
+
+      setPendingReviews(pending);
+      setCompletedReviews(completed);
+    } catch (error) {
+      console.error("Error fetch claims & reviews:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchClaimsAndUsers();
+  }, []);
+
+  const handleOpenReviewModal = (claimId: string) => {
+    const claim = claimsData.find(c => c.id === claimId);
+    if (claim) {
+      setSelectedClaim(claim);
+      setShowReviewModal(true);
+    }
+  };
+
+  const handleCloseReviewModal = () => {
+    setSelectedClaim(null);
+    setShowReviewModal(false);
+  };
+
+  const handleSubmitReview = async (reviewData: any) => {
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/reviews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reviewData)
+      });
+      fetchClaimsAndUsers();
+    } catch (error) {
+      console.error("Error submit review:", error);
+    }
+  };
+
+  const ReviewItem = ({ review }: { review: ReviewWithDetails }) => (
+    <div
+      onClick={() => handleOpenReviewModal(review.claimId)}
+      className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700 transition-all duration-200 hover:shadow-lg cursor-pointer p-6"
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex flex-col">
+          <h3 className="font-semibold text-gray-900 dark:text-white text-lg">{review.userName}</h3>
+          <p className="text-gray-600 dark:text-gray-300 text-sm mb-2 line-clamp-2">{review.description ?? "-"}</p>
+          <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+            <Calendar className="w-3 h-3" />
+            <span>{new Date(review.createdAt).toLocaleDateString("id-ID")}</span>
+            <Clock className="w-3 h-3" />
+            <span>{getDaysAgo(review.createdAt)}</span>
+            <span className="text-gray-400">{review.claimId}</span>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 text-right">
+          <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">{review.statusName}</Badge>
+          <div className="flex gap-2 justify-end mt-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={e => {
+                e.stopPropagation();
+                handleOpenReviewModal(review.claimId);
+              }}
+            >
+              <Eye className="w-4 h-4 mr-1" /> Detail / Review
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (currentUserId === null) {
+    return <div>Loading...</div>;
   }
 
-  const handleReviewClaim = (claim: Claim, e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent card click
-    setSelectedClaim(claim)
-    setShowReviewForm(true)
-  }
-
-  const handleCloseDetailModal = () => {
-    setShowDetailModal(false)
-    setSelectedClaim(null)
-  }
-
-  const handleCloseReviewForm = () => {
-    setShowReviewForm(false)
-    setSelectedClaim(null)
+  if (!currentUserId) {
+    return <div>Error: User ID not found. Please login again.</div>;
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8">
-      {/* Header */}
+    <div className="max-w-6xl mx-auto space-y-8">
       <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-          Review Klaim
-        </h1>
-        <p className="text-gray-500 dark:text-gray-400">
-          {pendingClaims.length} klaim menunggu review Anda
-        </p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Review Klaim</h1>
+        <p className="text-gray-500 dark:text-gray-400">{pendingReviews.length} klaim menunggu review Anda</p>
       </div>
-
-      {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                Pending Review
-              </p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                {pendingClaims.length}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-yellow-50 dark:bg-yellow-950/30 rounded-xl flex items-center justify-center">
-              <Clock className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                Total Nilai
-              </p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                Rp {formatCurrency(pendingClaims.reduce((sum, claim) => sum + parseInt(claim.amount.replace(/\./g, '')), 0).toString())}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-950/30 rounded-xl flex items-center justify-center">
-              <DollarSign className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                Rata-rata
-              </p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                Rp {formatCurrency(Math.round(pendingClaims.reduce((sum, claim) => sum + parseInt(claim.amount.replace(/\./g, '')), 0) / pendingClaims.length || 0).toString())}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl flex items-center justify-center">
-              <FileCheck className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Claims List */}
       <div className="space-y-4">
-        {pendingClaims.map((claim) => (
-          <div
-            key={claim.id}
-            onClick={() => handleViewDetail(claim)}
-            className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700 transition-all duration-200 hover:shadow-lg cursor-pointer p-6"
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-4 flex-1">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                  {claim.employeeName.split(' ').map(n => n[0]).join('')}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="font-semibold text-gray-900 dark:text-white text-lg">
-                      {claim.employeeName}
-                    </h3>
-                    <Badge variant="outline" className={getCategoryColor(claim.category)}>
-                      {claim.category}
-                    </Badge>
-                  </div>
-                  
-                  <p className="text-gray-600 dark:text-gray-300 text-sm mb-3 line-clamp-2">
-                    {claim.description}
-                  </p>
-                  
-                  <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                    <span className="flex items-center gap-1">
-                      <User className="w-3 h-3" />
-                      {claim.nik}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {claim.submissionDate}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {getDaysAgo(claim.submissionDate)}
-                    </span>
-                    <span className="text-gray-400">
-                      {claim.claimId}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="text-right ml-4">
-                <div className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-                  Rp {formatCurrency(claim.amount)}
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleViewDetail(claim)
-                    }}
-                    className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                  >
-                    <Eye className="w-4 h-4 mr-1" />
-                    Detail
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    onClick={(e) => handleReviewClaim(claim, e)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                  >
-                    <FileCheck className="w-4 h-4 mr-1" />
-                    Review
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
+        {pendingReviews.map(review => <ReviewItem key={review.claimId} review={review} />)}
       </div>
 
-      {pendingClaims.length === 0 && (
-        <div className="text-center py-16">
-          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <FileCheck className="w-8 h-8 text-gray-400" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-            Tidak ada klaim untuk direview
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400">
-            Semua klaim telah direview atau belum ada pengajuan baru
-          </p>
-        </div>
-      )}
+      <div className="text-center space-y-2">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Review Selesai</h1>
+        <p className="text-gray-500 dark:text-gray-400">{completedReviews.length} klaim telah direview</p>
+      </div>
+      <div className="space-y-4">
+        {completedReviews.map(review => <ReviewItem key={review.claimId} review={review} />)}
+      </div>
 
-      {/* Claim Detail Modal */}
-      {showDetailModal && selectedClaim && (
-        <ClaimDetailModal
-          claim={selectedClaim}
-          onClose={handleCloseDetailModal}
-        />
-      )}
-
-      {/* Review Form Modal */}
-      {showReviewForm && selectedClaim && (
-        <ReviewForm
-          claim={selectedClaim}
-          onClose={handleCloseReviewForm}
-        />
-      )}
+      {showReviewModal && selectedClaim && currentUserId && (
+  <ReviewModal
+    claim={selectedClaim}
+    statusList={Object.values(statusMap)}
+    currentUserId={currentUserId}
+    onClose={handleCloseReviewModal}
+    onSubmit={handleSubmitReview}
+  />
+)}
     </div>
-  )
+  );
 }
