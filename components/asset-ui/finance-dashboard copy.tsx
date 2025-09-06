@@ -1,197 +1,132 @@
-'use client';
+"use client";
 
-import { useEffect, useState, FormEvent } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-
-type Payment = {
-  id: string;
-  claim_id: string;
-  review_id: string;
-  payment_method_id?: string;
-  bank?: string;
-  note?: string;
-  user_id: string;
-  created_at: string;
-};
+import { useState, useEffect } from "react";
+import { FileText, Wallet, TrendingUp, CreditCard } from 'lucide-react';
+import type { Payment } from "@/lib/data";
+import PaymentForm from "./payment-form";
 
 export default function FinanceDashboard() {
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
 
-  // Form state
-  const [claimId, setClaimId] = useState('');
-  const [reviewId, setReviewId] = useState('');
-  const [paymentMethodId, setPaymentMethodId] = useState('');
-  const [bank, setBank] = useState('');
-  const [note, setNote] = useState('');
-  const [userId, setUserId] = useState('');
-
-  useEffect(() => {
-    fetchPayments();
-  }, []);
-
+  // Fetch payments dari API/database
   const fetchPayments = async () => {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/payments`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch payments');
-      }
+      if (!res.ok) throw new Error("Gagal fetch payments");
       const data = await res.json();
       setPayments(data);
-      setError(null);
-    } catch (err: any) {
-      setError(err.message || 'Unknown error');
-    }
-  };
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/payments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          claim_id: claimId,
-          review_id: reviewId,
-          payment_method_id: paymentMethodId || null,
-          bank: bank || null,
-          note: note || null,
-          user_id: userId,
-        }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || 'Failed to create payment');
-      }
-
-      // Reset form
-      setClaimId('');
-      setReviewId('');
-      setPaymentMethodId('');
-      setBank('');
-      setNote('');
-      setUserId('');
-
-      // Refresh payment list
-      fetchPayments();
-    } catch (err: any) {
-      setError(err.message || 'Unknown error');
+    } catch (error) {
+      console.error("Error fetch payments:", error);
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchPayments();
+  }, []);
+
+  // Statistik
+  const totalPayments = payments.length;
+  const totalAmount = payments.reduce((sum, p) => sum + parseInt(p.claim.transaction_total), 0);
+  const averageAmount = totalAmount / totalPayments || 0;
+  const formatCurrency = (amount: number) => new Intl.NumberFormat('id-ID').format(amount);
+
+  const handleOpenPaymentForm = (payment: Payment) => {
+    setSelectedPayment(payment);
+    setShowPaymentForm(true);
+  };
+
+  const handleClosePaymentForm = () => {
+    setSelectedPayment(null);
+    setShowPaymentForm(false);
+    fetchPayments(); // refresh data setelah submit
+  };
+
+  if (loading) return <p className="text-center py-16">Loading...</p>;
+
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-semibold mb-4">Finance Dashboard</h2>
+    <div className="max-w-6xl mx-auto space-y-8">
+      {/* Header & Statistik Cards */}
+      <div className="text-center space-y-2">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Finance Dashboard</h1>
+        <p className="text-gray-500 dark:text-gray-400">Kelola pembayaran klaim yang telah disetujui</p>
+      </div>
 
-      {error && <p className="text-red-500 mb-4">Error: {error}</p>}
-
-      {/* Form Insert Payment */}
-      <form onSubmit={handleSubmit} className="mb-6 border p-4 rounded-md bg-gray-50">
-        <h3 className="text-lg font-semibold mb-4">Add New Payment</h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block mb-1 font-medium">Claim ID *</label>
-            <input
-              type="text"
-              value={claimId}
-              onChange={(e) => setClaimId(e.target.value)}
-              required
-              className="w-full border rounded px-2 py-1"
-            />
-          </div>
-          <div>
-            <label className="block mb-1 font-medium">Review ID *</label>
-            <input
-              type="text"
-              value={reviewId}
-              onChange={(e) => setReviewId(e.target.value)}
-              required
-              className="w-full border rounded px-2 py-1"
-            />
-          </div>
-
-          <div>
-            <label className="block mb-1 font-medium">Payment Method ID</label>
-            <input
-              type="text"
-              value={paymentMethodId}
-              onChange={(e) => setPaymentMethodId(e.target.value)}
-              className="w-full border rounded px-2 py-1"
-            />
-          </div>
-
-          <div>
-            <label className="block mb-1 font-medium">Bank</label>
-            <input
-              type="text"
-              value={bank}
-              onChange={(e) => setBank(e.target.value)}
-              className="w-full border rounded px-2 py-1"
-            />
-          </div>
-
-          <div>
-            <label className="block mb-1 font-medium">Note</label>
-            <input
-              type="text"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="w-full border rounded px-2 py-1"
-            />
-          </div>
-
-          <div>
-            <label className="block mb-1 font-medium">User ID *</label>
-            <input
-              type="text"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              required
-              className="w-full border rounded px-2 py-1"
-            />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 hover:shadow-lg transition-all duration-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Klaim Siap Bayar</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">{totalPayments}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Menunggu pembayaran</p>
+            </div>
+            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-950/30 rounded-xl flex items-center justify-center">
+              <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+            </div>
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
-        >
-          {loading ? 'Saving...' : 'Save Payment'}
-        </button>
-      </form>
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 hover:shadow-lg transition-all duration-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Total Pembayaran</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">Rp {formatCurrency(totalAmount)}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Siap diproses</p>
+            </div>
+            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl flex items-center justify-center">
+              <Wallet className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+            </div>
+          </div>
+        </div>
 
-      {/* Payments List */}
-      <ScrollArea className="h-[500px] rounded-md border p-4">
-        {payments.map((payment) => (
-          <Card key={payment.id} className="mb-4">
-            <CardContent className="p-4">
-              <p><strong>ID:</strong> {payment.id}</p>
-              <p><strong>Claim ID:</strong> {payment.claim_id}</p>
-              <p><strong>Review ID:</strong> {payment.review_id}</p>
-              <p><strong>Bank:</strong> {payment.bank || '-'}</p>
-              <p><strong>Note:</strong> {payment.note || '-'}</p>
-              <p><strong>Created:</strong> {new Date(payment.created_at).toLocaleString()}</p>
-              <div className="mt-2">
-                <Badge variant="outline">User ID: {payment.user_id}</Badge>
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 hover:shadow-lg transition-all duration-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Rata-rata Klaim</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">Rp {formatCurrency(Math.round(averageAmount))}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Per klaim</p>
+            </div>
+            <div className="w-12 h-12 bg-purple-50 dark:bg-purple-950/30 rounded-xl flex items-center justify-center">
+              <TrendingUp className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Daftar Payments */}
+      <div className="space-y-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Daftar Pembayaran</h2>
+        <div className="grid gap-6">
+          {payments.map((p) => (
+            <div key={p.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 hover:shadow-lg transition-all duration-200 flex justify-between items-center">
+              <div>
+                <p className="font-semibold text-gray-900 dark:text-white">{p.claim.desc1} - {p.claim.desc2}</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">{p.note}</p>
+                <p className="text-gray-900 dark:text-white mt-2">Rp {formatCurrency(parseInt(p.claim.transaction_total))}</p>
+                <p className="text-gray-500 dark:text-gray-400 text-xs">Bank: {p.bank}</p>
               </div>
-            </CardContent>
-          </Card>
-        ))}
-      </ScrollArea>
+              <button
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl"
+                onClick={() => handleOpenPaymentForm(p)}
+              >
+                Edit / Bayar
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Payment Form Modal */}
+      {showPaymentForm && selectedPayment && (
+        <PaymentForm
+          claim={selectedPayment.claim} // kirim claim object
+          onClose={handleClosePaymentForm}
+        />
+      )}
     </div>
   );
 }

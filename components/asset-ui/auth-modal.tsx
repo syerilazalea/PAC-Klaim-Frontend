@@ -10,7 +10,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
+  SelectValue,
 } from "@/components/ui/select";
 import {
   X,
@@ -20,7 +20,7 @@ import {
   Mail,
   Lock,
   Phone,
-  BadgeIcon as IdCard
+  BadgeIcon as IdCard,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -45,20 +45,20 @@ const ROLES = [
     id: "employee",
     name: "Employee",
     description: "Karyawan yang mengajukan klaim",
-    redirectTo: "/employee/dashboard"
+    redirectTo: "/employee/dashboard",
   },
   {
     id: "hr",
     name: "HR",
     description: "Human Resources untuk review klaim",
-    redirectTo: "/hr/dashboard"
+    redirectTo: "/hr/dashboard",
   },
   {
     id: "finance",
     name: "Finance",
     description: "Tim Finance untuk proses pembayaran",
-    redirectTo: "/finance/dashboard"
-  }
+    redirectTo: "/finance/dashboard",
+  },
 ] as const;
 
 type RoleId = typeof ROLES[number]["id"];
@@ -79,7 +79,7 @@ const getRedirectByRole = (role?: string) => {
 export default function AuthModal({
   mode,
   onClose,
-  onSwitchMode
+  onSwitchMode,
 }: AuthModalProps) {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
@@ -93,21 +93,24 @@ export default function AuthModal({
     confirmPassword: "",
     nik: "",
     phone: "",
-    role: ""
+    role: "",
   });
 
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL;
+  // ✅ PERBAIKAN: Gunakan environment variable dengan fallback yang tepat
+  const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || 
+                  process.env.NEXT_PUBLIC_API_URL || 
+                  "http://localhost:3001";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (!baseURL) {
-      setError("NEXT_PUBLIC_API_BASE_URL belum diset.");
+      setError("URL API belum dikonfigurasi. Silakan hubungi administrator.");
       return;
     }
 
@@ -124,7 +127,8 @@ export default function AuthModal({
           throw new Error("NIK harus 16 digit");
         }
 
-        const regRes = await fetch(`${baseURL}/auth/register`, {
+        // ✅ PERBAIKAN: Tambahkan error handling yang lebih baik
+        const regRes = await fetch(`${baseURL}/api/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -133,56 +137,79 @@ export default function AuthModal({
             password: formData.password,
             nik: formData.nik,
             phone: formData.phone,
-            role: formData.role as RoleId
-          })
+            role: formData.role as RoleId,
+          }),
         });
 
         if (!regRes.ok) {
-          const err = await regRes.json().catch(() => null);
-          throw new Error(err?.message || "Registrasi gagal");
+          // ✅ PERBAIKAN: Handle berbagai status error
+          if (regRes.status === 404) {
+            throw new Error("Endpoint register tidak ditemukan. Periksa konfigurasi server.");
+          }
+          if (regRes.status === 500) {
+            throw new Error("Server error. Silakan coba lagi nanti.");
+          }
+          
+          const err = await regRes.json().catch(() => ({}));
+          throw new Error(err?.message || `Registrasi gagal (${regRes.status})`);
         }
 
-        const loginRes = await fetch(`${baseURL}/auth/login`, {
+        // Login otomatis setelah register
+        const loginRes = await fetch(`${baseURL}/api/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: formData.email,
-            password: formData.password
-          })
+            password: formData.password,
+          }),
         });
+        
         if (!loginRes.ok) {
-          const err = await loginRes.json().catch(() => null);
+          if (loginRes.status === 404) {
+            throw new Error("Endpoint login tidak ditemukan. Periksa konfigurasi server.");
+          }
+          const err = await loginRes.json().catch(() => ({}));
           throw new Error(err?.message || "Login otomatis gagal");
         }
+        
         const data = await loginRes.json();
         localStorage.setItem("token", data.access_token);
         localStorage.setItem("role", data.user.role);
+        localStorage.setItem("userId", data.user.id);
         onClose();
-        localStorage.setItem("userId", data.user.id); // <-- TAMBAHKAN INI
         router.push(getRedirectByRole(data?.user?.role));
         return;
       }
 
-      const res = await fetch(`${baseURL}/auth/login`, {
+      // Login
+      const res = await fetch(`${baseURL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: formData.email,
-          password: formData.password
-        })
+          password: formData.password,
+        }),
       });
+      
       if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message || "Login gagal");
+        // ✅ PERBAIKAN: Handle error 404 khusus
+        if (res.status === 404) {
+          throw new Error("Endpoint login tidak ditemukan. Pastikan URL API benar.");
+        }
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || `Login gagal (${res.status})`);
       }
+      
       const data = await res.json();
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("role", data.user.role);
-      onClose();
       localStorage.setItem("userId", data.user.id);
+      onClose();
       router.push(getRedirectByRole(data?.user?.role));
+      
     } catch (e: any) {
-      setError(e?.message || "Terjadi kesalahan");
+      console.error("Auth error:", e);
+      setError(e?.message || "Terjadi kesalahan. Silakan coba lagi.");
     } finally {
       setIsLoading(false);
     }
@@ -204,8 +231,18 @@ export default function AuthModal({
     );
   };
 
+  // ✅ PERBAIKAN: Tambahkan handler untuk klik di luar modal
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+    <div 
+      className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn"
+      onClick={handleOverlayClick}
+    >
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 w-full max-w-lg shadow-xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800">
@@ -230,13 +267,23 @@ export default function AuthModal({
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+        <form
+          onSubmit={handleSubmit}
+          className="p-6 space-y-5 max-h-[70vh] overflow-y-auto"
+        >
           {error && (
-            <div className="p-3 bg-red-50 text-red-700 rounded-md text-sm">
-              {error}
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
+              ⚠️ {error}
+              {/* ✅ PERBAIKAN: Tampilkan saran troubleshooting untuk error 404 */}
+              {error.includes("tidak ditemukan") && (
+                <div className="mt-2 text-xs">
+                  Periksa environment variable <code>NEXT_PUBLIC_API_BASE_URL</code> di file <code>.env.local</code>
+                </div>
+              )}
             </div>
           )}
 
+          {/* Form */}
           {mode === "login" ? (
             <>
               {/* Email */}
@@ -247,11 +294,11 @@ export default function AuthModal({
                   <Input
                     type="email"
                     value={formData.email}
-                    onChange={(e) =>
-                      handleInputChange("email", e.target.value)
-                    }
+                    onChange={(e) => handleInputChange("email", e.target.value)}
                     placeholder="Masukkan email"
                     className="pl-10 focus:ring-2 focus:ring-blue-500"
+                    required
+                    disabled={isLoading}
                   />
                 </div>
               </div>
@@ -268,23 +315,23 @@ export default function AuthModal({
                     }
                     placeholder="Masukkan password"
                     className="pl-10 pr-10 focus:ring-2 focus:ring-blue-500"
+                    required
+                    disabled={isLoading}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    disabled={isLoading}
                   >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
             </>
           ) : (
             <>
+              {/* Register Form */}
               {/* Nama */}
               <div>
                 <Label>Nama Lengkap *</Label>
@@ -296,6 +343,8 @@ export default function AuthModal({
                     onChange={(e) => handleInputChange("name", e.target.value)}
                     placeholder="Masukkan nama lengkap"
                     className="pl-10 focus:ring-2 focus:ring-blue-500"
+                    required
+                    disabled={isLoading}
                   />
                 </div>
               </div>
@@ -310,6 +359,9 @@ export default function AuthModal({
                     onChange={(e) => handleInputChange("nik", e.target.value)}
                     placeholder="16 digit NIK"
                     className="pl-10 focus:ring-2 focus:ring-blue-500"
+                    required
+                    disabled={isLoading}
+                    maxLength={16}
                   />
                 </div>
               </div>
@@ -321,11 +373,11 @@ export default function AuthModal({
                   <Input
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) =>
-                      handleInputChange("phone", e.target.value)
-                    }
+                    onChange={(e) => handleInputChange("phone", e.target.value)}
                     placeholder="0812xxxx atau +62812xxxx"
                     className="pl-10 focus:ring-2 focus:ring-blue-500"
+                    required
+                    disabled={isLoading}
                   />
                 </div>
               </div>
@@ -337,11 +389,11 @@ export default function AuthModal({
                   <Input
                     type="email"
                     value={formData.email}
-                    onChange={(e) =>
-                      handleInputChange("email", e.target.value)
-                    }
+                    onChange={(e) => handleInputChange("email", e.target.value)}
                     placeholder="Masukkan email"
                     className="pl-10 focus:ring-2 focus:ring-blue-500"
+                    required
+                    disabled={isLoading}
                   />
                 </div>
               </div>
@@ -353,6 +405,7 @@ export default function AuthModal({
                   onValueChange={(value) =>
                     handleInputChange("role", value as RoleId)
                   }
+                  disabled={isLoading}
                 >
                   <SelectTrigger className="focus:ring-2 focus:ring-blue-500">
                     <SelectValue placeholder="Pilih role" />
@@ -384,17 +437,16 @@ export default function AuthModal({
                     }
                     placeholder="Masukkan password"
                     className="pl-10 pr-10 focus:ring-2 focus:ring-blue-500"
+                    required
+                    disabled={isLoading}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    disabled={isLoading}
                   >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
@@ -411,6 +463,8 @@ export default function AuthModal({
                     }
                     placeholder="Konfirmasi password"
                     className="pl-10 pr-10 focus:ring-2 focus:ring-blue-500"
+                    required
+                    disabled={isLoading}
                   />
                   <button
                     type="button"
@@ -418,6 +472,7 @@ export default function AuthModal({
                       setShowConfirmPassword(!showConfirmPassword)
                     }
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    disabled={isLoading}
                   >
                     {showConfirmPassword ? (
                       <EyeOff className="w-4 h-4" />
@@ -440,7 +495,7 @@ export default function AuthModal({
           <Button
             type="submit"
             disabled={!isFormValid() || isLoading}
-            className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg shadow-md hover:shadow-lg transition-all"
+            className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading
               ? mode === "login"
@@ -460,6 +515,7 @@ export default function AuthModal({
                   type="button"
                   onClick={() => onSwitchMode("register")}
                   className="text-blue-600 hover:underline font-medium"
+                  disabled={isLoading}
                 >
                   Daftar di sini
                 </button>
@@ -471,6 +527,7 @@ export default function AuthModal({
                   type="button"
                   onClick={() => onSwitchMode("login")}
                   className="text-blue-600 hover:underline font-medium"
+                  disabled={isLoading}
                 >
                   Masuk di sini
                 </button>

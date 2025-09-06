@@ -16,7 +16,7 @@ const getStatusColor = (status: string | undefined | null) => {
       return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300";
     case "ditolak":
       return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
-    default: // termasuk "pending"
+    default:
       return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300";
   }
 };

@@ -29,14 +29,33 @@ export interface Claim {
   claimTypeName?: string;
 }
 
-export type Payment = {
-  id: string
-  note: string
-  bank: string
-  claim: Claim
-  proofs: { file_url: string }[]
+export interface Review {
+  id: string;
+  user_id: string;
+  claim_id: string;
+  status_id: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+
+  // relasi ke Claim
+  claim: Claim;
 }
 
+export type Payment = {
+  id: string;
+  note: string;
+  bank: string;
+  claim: Claim;
+  review?: Review;
+  payment_method?: {
+    id: string;
+    method: string;
+    created_at: string;
+    updated_at: string;
+  };
+  proofs: { file_url: string }[];
+};
 
 export const SAMPLE_CLAIMS: Claim[] = [
   {
@@ -52,25 +71,38 @@ export const SAMPLE_CLAIMS: Claim[] = [
     created_at: "2025-01-20T10:00:00Z",
     updated_at: "2025-01-21T10:00:00Z",
   },
-  // objek lain
+  {
+    id: "2",
+    user_id: "user-002",
+    claim_type_id: "type-002",
+    desc1: "Klaim kesehatan",
+    desc2: "Rawat jalan",
+    transaction_date: "2025-02-10",
+    transaction_total: "310000",
+    status_id: "approved",
+    description: "Pengobatan flu dan pembelian obat",
+    created_at: "2025-02-10T08:00:00Z",
+    updated_at: "2025-02-11T10:00:00Z",
+  },
 ];
 
-
 export const getClaimsByStatus = (status: string) => {
-  return SAMPLE_CLAIMS.filter(claim => claim.status_id === status)
-}
+  return SAMPLE_CLAIMS.filter((claim) => claim.status_id === status);
+};
 
 export const getClaimsForFinance = () => {
-  return SAMPLE_CLAIMS.filter(claim => claim.status_id === 'approved')
-}
+  return SAMPLE_CLAIMS.filter((claim) => claim.status_id === "approved");
+};
 
 export const getClaimsForHR = () => {
-  return SAMPLE_CLAIMS.filter(claim => claim.status_id === 'pending' && !claim.transaction_date)
-}
+  return SAMPLE_CLAIMS.filter(
+    (claim) => claim.status_id === "pending" && !claim.transaction_date
+  );
+};
 
 export const getClaimsForEmployee = (employeeId?: string) => {
   if (employeeId) {
-    return SAMPLE_CLAIMS.filter(claim => claim.user_id === employeeId)
+    return SAMPLE_CLAIMS.filter((claim) => claim.user_id === employeeId);
   }
-  return SAMPLE_CLAIMS
-}
+  return SAMPLE_CLAIMS;
+};
